@@ -1,50 +1,63 @@
-import Link from "next/link";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { db } from "@/lib/db";
+import { auth } from "@clerk/nextjs/server";
+import crypto from "crypto";
 
-export default function Home() {
+function hashCode(code: string) {
+  return crypto.createHash("sha256").update(code).digest("hex");
+}
+
+export default async function PublicPage({
+  params,
+  searchParams,
+}: {
+  params: { handle: string };
+  searchParams: { code?: string };
+}) {
+  const handle = params.handle;
+
+  const page = await db.page.findUnique({ where: { handle } });
+  if (!page) return <main style={{ padding: 24 }}>Not found.</main>;
+
+  const { userId } = auth();
+
+  if (page.privacyMode === "PRIVATE") {
+    if (userId !== page.userId) {
+      return <main style={{ padding: 24 }}>This page is private.</main>;
+    }
+  }
+
+  if (page.privacyMode === "FAMILY") {
+    const allowed =
+      userId && (userId === page.userId || page.familyAllowlist.includes(userId));
+    if (!allowed) return <main style={{ padding: 24 }}>Family-only page.</main>;
+  }
+
+  if (page.privacyMode === "CODE") {
+    const ok =
+      page.accessCodeHash &&
+      searchParams.code &&
+      hashCode(searchParams.code) === page.accessCodeHash;
+
+    const owner = userId === page.userId;
+
+    if (!ok && !owner) {
+      return (
+        <main style={{ padding: 24, maxWidth: 640, margin: "0 auto" }}>
+          <h1 style={{ fontSize: 28 }}>{page.displayName}</h1>
+          <p>This page requires a code.</p>
+          <p style={{ color: "#666" }}>
+            Add <b>?code=YOURCODE</b> to the end of the URL.
+          </p>
+        </main>
+      );
+    }
+  }
+
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 40, marginBottom: 8 }}>Authored</h1>
-
-      <p style={{ marginTop: 0, color: "#444", lineHeight: 1.4 }}>
-        One page per person. Editable in life. Private if you want.
-      </p>
-
-      <div style={{ marginTop: 20 }}>
-        <SignedOut>
-          <SignInButton mode="modal">
-            <button
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: "black",
-                color: "white",
-                border: "none"
-              }}
-            >
-              Sign in
-            </button>
-          </SignInButton>
-        </SignedOut>
-
-        <SignedIn>
-          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-            <UserButton />
-            <Link href="/me">Edit my page</Link>
-            <Link href="/search">Search</Link>
-          </div>
-        </SignedIn>
-      </div>
-
-      <hr style={{ margin: "28px 0" }} />
-
-      <h2 style={{ marginBottom: 6 }}>What this is</h2>
-      <ul style={{ color: "#333", lineHeight: 1.6 }}>
-        <li>You get one permanent page.</li>
-        <li>You can edit it while you are alive.</li>
-        <li>You choose privacy: Public, Code, Family, or Private.</li>
-        <li>Verification uses phone + one extra check later.</li>
-      </ul>
+    <main style={{ padding: 24, maxWidth: 760, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 38, marginBottom: 8 }}>{page.displayName}</h1>
+      <div style={{ color: "#666", marginBottom: 18 }}>@{page.handle}</div>
+      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{page.content}</div>
     </main>
   );
 }
