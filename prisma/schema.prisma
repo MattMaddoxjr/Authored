@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PrivacyMode {
+  PUBLIC
+  CODE
+  FAMILY
+  PRIVATE
+}
+
+model User {
+  id        String   @id
+  createdAt DateTime @default(now())
+  page      Page?
+}
+
+model Page {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName     String
+  handle          String      @unique
+  content         String      @default("")
+  privacyMode     PrivacyMode @default(PUBLIC)
+
+  accessCodeHash  String?
+  familyAllowlist String[]    @default([])
+
+  phoneVerified   Boolean     @default(false)
+  secondCheck     String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
